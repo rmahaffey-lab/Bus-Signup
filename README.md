@@ -116,17 +116,22 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-analytics.js";
-        import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged, signInWithCustomToken, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getAuth, signInWithRedirect, GoogleAuthProvider, signOut, onAuthStateChanged, signInWithCustomToken, signInAnonymously, getRedirectResult } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, onSnapshot, collection, setDoc, updateDoc, FieldValue } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-storage.js";
 
-        // Firebase configuration from environment variables or a fallback
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-
         let db, auth;
         let userId;
+
+        // Firebase configuration from environment variables or a fallback
+        let firebaseConfig = null;
+        if (typeof __firebase_config !== 'undefined' && __firebase_config) {
+            firebaseConfig = JSON.parse(__firebase_config);
+        }
+
+        // Move these variables to a global scope so they are accessible by all functions
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
 
         // Bus stops
         const busStops = [
@@ -147,35 +152,38 @@
         // Initialize Firebase and Authentication
         async function initializeFirebase() {
             try {
+                // Check if Firebase config is available before initializing
+                if (!firebaseConfig) {
+                    throw new Error("Firebase configuration not found or is empty. Please ensure the app is configured correctly.");
+                }
+
                 const app = initializeApp(firebaseConfig);
-                const analytics = getAnalytics(app); // Added analytics initialization
+                const analytics = getAnalytics(app);
                 db = getFirestore(app);
                 auth = getAuth(app);
 
-                // Check for initial custom token and sign in
-                if (initialAuthToken) {
+                const redirectResult = await getRedirectResult(auth);
+                if (redirectResult && redirectResult.user) {
+                    console.log("Signed in with redirect:", redirectResult.user);
+                } else if (initialAuthToken) {
                     await signInWithCustomToken(auth, initialAuthToken);
                 }
-                
+
                 onAuthStateChanged(auth, async (user) => {
                     document.getElementById('loading').classList.add('hidden');
                     document.getElementById('main-content').classList.remove('hidden');
 
                     if (user) {
-                        // User is signed in.
                         userId = user.uid;
-                        // Display user info
                         const name = user.displayName || 'Anonymous User';
                         document.getElementById('user-info').textContent = `Signed in as ${name} (ID: ${userId})`;
 
                         document.getElementById('auth-ui').classList.add('hidden');
                         document.getElementById('app-ui').classList.remove('hidden');
                         
-                        // Listen for real-time updates from the database
                         await setupRealtimeListener();
 
                     } else {
-                        // User is signed out.
                         document.getElementById('auth-ui').classList.remove('hidden');
                         document.getElementById('app-ui').classList.add('hidden');
                     }
@@ -333,15 +341,7 @@
         // Event listeners for auth buttons
         document.getElementById('signInGoogleBtn').addEventListener('click', () => {
             const provider = new GoogleAuthProvider();
-            signInWithPopup(auth, provider)
-                .then((result) => {
-                    // Signed in successfully
-                }).catch((error) => {
-                    const errorMessage = error.message;
-                    console.error("Google Sign-in Error:", errorMessage);
-                    document.getElementById('error-message').textContent = errorMessage;
-                    document.getElementById('error-message').classList.remove('hidden');
-                });
+            signInWithRedirect(auth, provider);
         });
 
         document.getElementById('signInAnonymousBtn').addEventListener('click', () => {
