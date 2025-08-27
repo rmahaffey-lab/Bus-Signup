@@ -91,7 +91,7 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-analytics.js";
-        import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged, signInWithCustomToken, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, onSnapshot, collection, setDoc, FieldValue } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // Your web app's Firebase configuration
@@ -138,11 +138,10 @@
                 db = getFirestore(app);
                 auth = getAuth(app);
 
-                // Sign in with the custom token provided by the Canvas environment, or anonymously otherwise.
+                // Sign in with the custom token provided by the Canvas environment.
+                // Anonymous sign-in has been removed to enforce Google authentication.
                 if (initialAuthToken) {
                     await signInWithCustomToken(auth, initialAuthToken);
-                } else {
-                    await signInAnonymously(auth);
                 }
                 
                 onAuthStateChanged(auth, async (user) => {
@@ -152,11 +151,8 @@
                     if (user) {
                         // User is signed in.
                         userId = user.uid;
-                        // Display user info, showing ID for anonymous users
-                        const userInfoText = user.isAnonymous
-                            ? `Signed in as anonymous user (ID: ${userId})`
-                            : `Signed in as ${user.email} (ID: ${userId})`;
-                        document.getElementById('user-info').textContent = userInfoText;
+                        // Display user info
+                        document.getElementById('user-info').textContent = `Signed in as ${user.email} (ID: ${userId})`;
 
                         document.getElementById('auth-ui').classList.add('hidden');
                         document.getElementById('app-ui').classList.remove('hidden');
