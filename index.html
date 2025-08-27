@@ -148,22 +148,21 @@
         async function initializeFirebase() {
             try {
                 const app = initializeApp(firebaseConfig);
-                const analytics = getAnalytics(app); // Added analytics initialization
+                const analytics = getAnalytics(app);
                 db = getFirestore(app);
                 auth = getAuth(app);
 
-                // Check for initial custom token and sign in
-                if (initialAuthToken) {
+                // This is the key change: handle the redirect result first.
+                // The browser will be redirected back here after Google sign-in.
+                const redirectResult = await getRedirectResult(auth);
+                if (redirectResult && redirectResult.user) {
+                    console.log("Signed in with redirect:", redirectResult.user);
+                } else if (initialAuthToken) {
+                    // Fallback to custom token if no redirect result
                     await signInWithCustomToken(auth, initialAuthToken);
-                } else {
-                    // Handle the redirect result if the user was just redirected back
-                    const result = await getRedirectResult(auth);
-                    if (result) {
-                        // User successfully signed in via redirect.
-                        console.log("Signed in with redirect.");
-                    }
                 }
-                
+
+                // Listen for any auth state changes to update the UI
                 onAuthStateChanged(auth, async (user) => {
                     document.getElementById('loading').classList.add('hidden');
                     document.getElementById('main-content').classList.remove('hidden');
