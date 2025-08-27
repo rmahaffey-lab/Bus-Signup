@@ -146,7 +146,12 @@
                     if (user) {
                         // User is signed in.
                         userId = user.uid;
-                        document.getElementById('user-info').textContent = `Signed in as ${user.email} (ID: ${userId})`;
+                        // Display user info, showing ID for anonymous users
+                        const userInfoText = user.isAnonymous
+                            ? `Signed in as anonymous user (ID: ${userId})`
+                            : `Signed in as ${user.email} (ID: ${userId})`;
+                        document.getElementById('user-info').textContent = userInfoText;
+
                         document.getElementById('auth-ui').classList.add('hidden');
                         document.getElementById('app-ui').classList.remove('hidden');
                         
