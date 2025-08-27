@@ -120,13 +120,18 @@
         import { getFirestore, doc, onSnapshot, collection, setDoc, updateDoc, FieldValue } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-storage.js";
 
-        // Firebase configuration from environment variables or a fallback
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-
         let db, auth;
         let userId;
+
+        // Firebase configuration from environment variables or a fallback
+        let firebaseConfig = null;
+        if (typeof __firebase_config !== 'undefined' && __firebase_config) {
+            firebaseConfig = JSON.parse(__firebase_config);
+        }
+
+        // Move these variables to a global scope so they are accessible by all functions
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
 
         // Bus stops
         const busStops = [
@@ -149,7 +154,7 @@
             try {
                 // Check if Firebase config is available before initializing
                 if (!firebaseConfig) {
-                    throw new Error("Firebase configuration not found. Please ensure the app is configured correctly.");
+                    throw new Error("Firebase configuration not found or is empty. Please ensure the app is configured correctly.");
                 }
 
                 const app = initializeApp(firebaseConfig);
