@@ -274,9 +274,14 @@
             try {
                 if (!db || !auth || !auth.currentUser) return;
                 const docRef = doc(db, `artifacts/${appId}/public/data/${runType}/${docId}`);
-                // Use FieldValue.delete() to remove the specific field (user's ID)
-                const data = { [staffId]: FieldValue.delete() };
-                await setDoc(docRef, data, { merge: true });
+                const docSnap = await getDoc(docRef);
+
+                if (docSnap.exists() && docSnap.data()[staffId] !== undefined) {
+                    const data = { [staffId]: FieldValue.delete() };
+                    await setDoc(docRef, data, { merge: true });
+                } else {
+                    console.log("User is not signed up, no action taken.");
+                }
             } catch (e) {
                 console.error("Error removing sign-up: ", e);
             }
