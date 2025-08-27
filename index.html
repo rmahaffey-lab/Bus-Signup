@@ -126,7 +126,7 @@
         let db, auth;
         let userId;
         let currentDate;
-        let unsubscribeListeners = [];
+        let unsubscribeListener;
 
         // For Firebase JS SDK v7.20.0 and later, measurementId is optional
         const YOUR_FIREBASE_CONFIG = {
@@ -199,7 +199,7 @@
                 dateInput.value = currentDate;
                 dateInput.addEventListener('change', (e) => {
                     currentDate = e.target.value;
-                    unsubscribeAllListeners();
+                    if (unsubscribeListener) unsubscribeListener();
                     setupRealtimeListener();
                 });
 
@@ -232,12 +232,6 @@
             }
         }
 
-        // Unsubscribe all active listeners
-        function unsubscribeAllListeners() {
-            unsubscribeListeners.forEach(unsubscribe => unsubscribe());
-            unsubscribeListeners = [];
-        }
-
         // Setup real-time listeners for bus sign-ups
         async function setupRealtimeListener() {
             if (!db || !auth || !auth.currentUser) {
@@ -247,29 +241,18 @@
 
             const staffId = auth.currentUser.uid;
             
-            // Reference to the public sign-up data collections for the selected date
-            const morningRunRef = collection(db, `artifacts/${appId}/public/data/morning_run/${currentDate}/signups`);
-            const afternoonRunRef = collection(db, `artifacts/${appId}/public/data/afternoon_run/${currentDate}/signups`);
+            // Reference to the daily sign-up data document for the selected date
+            const dailySignupsRef = doc(db, `artifacts/${appId}/public/data/daily_signups`, currentDate);
             
-            // Listener for morning run
-            const unsubscribeMorning = onSnapshot(morningRunRef, (snapshot) => {
-                const morningRuns = {};
-                snapshot.forEach(doc => {
-                    morningRuns[doc.id] = doc.data();
-                });
-                renderBusStops('morning-run', morningRuns, staffId, 'morning_run');
-            });
-            unsubscribeListeners.push(unsubscribeMorning);
+            // Listener for the daily document
+            unsubscribeListener = onSnapshot(dailySignupsRef, (docSnapshot) => {
+                const dailyData = docSnapshot.data() || {};
+                const morningRuns = dailyData.morning_run || {};
+                const afternoonRuns = dailyData.afternoon_run || {};
 
-            // Listener for afternoon run
-            const unsubscribeAfternoon = onSnapshot(afternoonRunRef, (snapshot) => {
-                const afternoonRuns = {};
-                snapshot.forEach(doc => {
-                    afternoonRuns[doc.id] = doc.data();
-                });
+                renderBusStops('morning-run', morningRuns, staffId, 'morning_run');
                 renderBusStops('afternoon-run', afternoonRuns, staffId, 'afternoon_run');
             });
-            unsubscribeListeners.push(unsubscribeAfternoon);
         }
 
         // Render bus stops and sign-up buttons
@@ -359,8 +342,8 @@
         async function addSignUp(runType, docId, staffId, staffName) {
             try {
                 if (!db || !auth || !auth.currentUser || !currentDate) return;
-                const docRef = doc(db, `artifacts/${appId}/public/data/${runType}/${currentDate}/signups/${docId}`);
-                const data = { [staffId]: { uid: staffId, name: staffName, email: auth.currentUser.email || 'anonymous' } };
+                const docRef = doc(db, `artifacts/${appId}/public/data/daily_signups`, currentDate);
+                const data = { [runType]: { [docId]: { [staffId]: { uid: staffId, name: staffName, email: auth.currentUser.email || 'anonymous' } } } };
                 await setDoc(docRef, data, { merge: true });
             } catch (e) {
                 console.error("Error adding sign-up: ", e);
@@ -371,9 +354,9 @@
         async function removeSignUp(runType, docId, staffId) {
             try {
                 if (!db || !auth || !auth.currentUser || !currentDate) return;
-                const docRef = doc(db, `artifacts/${appId}/public/data/${runType}/${currentDate}/signups/${docId}`);
+                const docRef = doc(db, `artifacts/${appId}/public/data/daily_signups`, currentDate);
                 await updateDoc(docRef, {
-                    [staffId]: FieldValue.delete()
+                    [`${runType}.${docId}.${staffId}`]: FieldValue.delete()
                 });
             } catch (e) {
                 console.error("Error removing sign-up: ", e);
