@@ -92,7 +92,7 @@
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-analytics.js";
         import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, onSnapshot, collection, setDoc, FieldValue } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, doc, onSnapshot, collection, setDoc, updateDoc, FieldValue, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // Your web app's Firebase configuration
         // For Firebase JS SDK v7.20.0 and later, measurementId is optional
@@ -274,14 +274,8 @@
             try {
                 if (!db || !auth || !auth.currentUser) return;
                 const docRef = doc(db, `artifacts/${appId}/public/data/${runType}/${docId}`);
-                const docSnap = await getDoc(docRef);
-
-                if (docSnap.exists() && docSnap.data()[staffId] !== undefined) {
-                    const data = { [staffId]: FieldValue.delete() };
-                    await setDoc(docRef, data, { merge: true });
-                } else {
-                    console.log("User is not signed up, no action taken.");
-                }
+                const data = { [staffId]: FieldValue.delete() };
+                await updateDoc(docRef, data);
             } catch (e) {
                 console.error("Error removing sign-up: ", e);
             }
