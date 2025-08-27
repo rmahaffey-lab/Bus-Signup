@@ -33,13 +33,16 @@
             max-height: 400px;
             overflow-y: auto;
         }
+        .modal {
+            background-color: rgba(0, 0, 0, 0.5);
+        }
     </style>
 </head>
 <body>
 
     <div id="app" class="flex flex-col items-center justify-center min-h-screen p-4">
         <div id="loading" class="text-center text-gray-600">
-            <h1 class="text-3xl font-bold text-gray-800">Loading Sign-Up Sheet...</h1>
+            <h1 class="text-3xl font-bold text-gray-800">Loading App...</h1>
             <p class="mt-2">Please wait while we connect to the database.</p>
         </div>
 
@@ -47,10 +50,15 @@
             <div id="auth-ui" class="flex flex-col items-center justify-center min-h-screen">
                 <div class="card p-8 w-full max-w-sm text-center">
                     <h1 class="text-2xl font-bold text-gray-800 mb-4">Staff Bus Sign-Up</h1>
-                    <p class="text-sm text-gray-500 mb-6">Please sign in with your school email.</p>
-                    <button id="signInBtn" class="w-full bg-blue-600 text-white font-semibold py-2 px-4 rounded-md hover:bg-blue-700 transition duration-300">
-                        Sign in with Google
-                    </button>
+                    <p class="text-sm text-gray-500 mb-6">Choose how you would like to sign in.</p>
+                    <div class="flex flex-col gap-4">
+                        <button id="signInGoogleBtn" class="w-full bg-blue-600 text-white font-semibold py-2 px-4 rounded-md hover:bg-blue-700 transition duration-300">
+                            Sign in with Google
+                        </button>
+                        <button id="signInAnonymousBtn" class="w-full bg-gray-600 text-white font-semibold py-2 px-4 rounded-md hover:bg-gray-700 transition duration-300">
+                            Sign in Anonymously
+                        </button>
+                    </div>
                     <div id="error-message" class="text-red-500 text-sm mt-4 hidden"></div>
                 </div>
             </div>
@@ -85,30 +93,36 @@
                 </main>
             </div>
         </div>
+
+        <!-- Custom Modal for Name Input -->
+        <div id="name-modal" class="modal fixed inset-0 flex items-center justify-center p-4 hidden">
+            <div class="card p-8 w-full max-w-sm">
+                <h3 class="text-xl font-bold text-gray-800 mb-4">Enter Your Name</h3>
+                <p class="text-sm text-gray-500 mb-4">Your name will be visible to others on the sign-up sheet.</p>
+                <input type="text" id="name-input" class="w-full p-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4" placeholder="e.g. John Doe">
+                <div class="flex justify-end gap-2">
+                    <button id="cancel-name-btn" class="bg-gray-200 text-gray-700 font-semibold py-2 px-4 rounded-md hover:bg-gray-300 transition duration-300">
+                        Cancel
+                    </button>
+                    <button id="confirm-name-btn" class="bg-blue-600 text-white font-semibold py-2 px-4 rounded-md hover:bg-blue-700 transition duration-300">
+                        Sign Up
+                    </button>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- Firebase SDKs -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-analytics.js";
-        import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, onSnapshot, collection, setDoc, updateDoc, FieldValue, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged, signInWithCustomToken, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, onSnapshot, collection, setDoc, updateDoc, FieldValue } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-storage.js";
 
-        // Your web app's Firebase configuration
-        // For Firebase JS SDK v7.20.0 and later, measurementId is optional
-        const YOUR_FIREBASE_CONFIG = {
-          apiKey: "AIzaSyChx1hUc5JhsNSvFCJqCFo4pAeUAbJC-O0",
-          authDomain: "staff-route-sign-up.firebaseapp.com",
-          projectId: "staff-route-sign-up",
-          storageBucket: "staff-route-sign-up.firebasestorage.app",
-          messagingSenderId: "583733533491",
-          appId: "1:583733533491:web:0419cc007b0c7a262abc46",
-          measurementId: "G-MD7GNJ10GB"
-        };
-        
-        // Use provided config if available, otherwise use the hard-coded one
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : YOUR_FIREBASE_CONFIG;
-        const appId = typeof __app_id !== 'undefined' ? __app_id : YOUR_FIREBASE_CONFIG.projectId;
+        // Firebase configuration from environment variables or a fallback
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
         const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
 
         let db, auth;
@@ -138,8 +152,7 @@
                 db = getFirestore(app);
                 auth = getAuth(app);
 
-                // Sign in with the custom token provided by the Canvas environment.
-                // Anonymous sign-in has been removed to enforce Google authentication.
+                // Check for initial custom token and sign in
                 if (initialAuthToken) {
                     await signInWithCustomToken(auth, initialAuthToken);
                 }
@@ -152,7 +165,8 @@
                         // User is signed in.
                         userId = user.uid;
                         // Display user info
-                        document.getElementById('user-info').textContent = `Signed in as ${user.email} (ID: ${userId})`;
+                        const name = user.displayName || 'Anonymous User';
+                        document.getElementById('user-info').textContent = `Signed in as ${name} (ID: ${userId})`;
 
                         document.getElementById('auth-ui').classList.add('hidden');
                         document.getElementById('app-ui').classList.remove('hidden');
@@ -216,9 +230,9 @@
             busStops.forEach(stop => {
                 const docId = sanitizeForId(stop);
                 const busData = data[docId] || {};
-                const currentSignUps = Object.keys(busData).length;
-                const isSignedUp = busData[staffId] !== undefined;
-                const isFull = currentSignUps >= 14;
+                const signedUpUser = Object.values(busData).find(user => user.uid === staffId);
+                const isSignedUp = signedUpUser !== undefined;
+                const isFull = Object.keys(busData).length >= 14;
 
                 const cardClass = isSignedUp ? 'signed-up' : (isFull ? 'occupied' : 'bus-stop-card');
 
@@ -231,7 +245,15 @@
                 
                 const occupancy = document.createElement('div');
                 occupancy.className = `text-xs text-gray-600 mt-1`;
-                occupancy.textContent = `${currentSignUps} / 14 seats`;
+                occupancy.textContent = `${Object.keys(busData).length} / 14 seats`;
+
+                const occupantsList = document.createElement('ul');
+                occupantsList.className = 'list-disc list-inside text-xs text-gray-700 mt-2';
+                Object.values(busData).forEach(user => {
+                    const li = document.createElement('li');
+                    li.textContent = user.name || 'Anonymous User';
+                    occupantsList.appendChild(li);
+                });
 
                 const button = document.createElement('button');
                 button.className = `mt-3 py-2 px-4 rounded-md font-semibold transition duration-300`;
@@ -247,22 +269,48 @@
                 } else {
                     button.textContent = 'Sign Up';
                     button.classList.add('bg-green-500', 'text-white', 'hover:bg-green-600');
-                    button.onclick = () => addSignUp(runType, docId, staffId);
+                    button.onclick = () => showNameModal(runType, docId);
                 }
 
                 card.appendChild(stopName);
                 card.appendChild(occupancy);
+                card.appendChild(occupantsList);
                 card.appendChild(button);
                 container.appendChild(card);
             });
         }
 
+        let pendingSignUpData = null;
+
+        function showNameModal(runType, docId) {
+            pendingSignUpData = { runType, docId };
+            document.getElementById('name-modal').classList.remove('hidden');
+        }
+
+        document.getElementById('confirm-name-btn').addEventListener('click', () => {
+            const nameInput = document.getElementById('name-input');
+            const name = nameInput.value.trim();
+            if (name) {
+                addSignUp(pendingSignUpData.runType, pendingSignUpData.docId, auth.currentUser.uid, name);
+                nameInput.value = '';
+                document.getElementById('name-modal').classList.add('hidden');
+            } else {
+                nameInput.placeholder = 'Please enter your name!';
+                nameInput.classList.add('border-red-500');
+            }
+        });
+
+        document.getElementById('cancel-name-btn').addEventListener('click', () => {
+            document.getElementById('name-input').value = '';
+            document.getElementById('name-modal').classList.add('hidden');
+        });
+
         // Function to add a sign-up
-        async function addSignUp(runType, docId, staffId) {
+        async function addSignUp(runType, docId, staffId, staffName) {
             try {
                 if (!db || !auth || !auth.currentUser) return;
                 const docRef = doc(db, `artifacts/${appId}/public/data/${runType}/${docId}`);
-                const data = { [staffId]: auth.currentUser.email };
+                const data = { [staffId]: { uid: staffId, name: staffName, email: auth.currentUser.email || 'anonymous' } };
                 await setDoc(docRef, data, { merge: true });
             } catch (e) {
                 console.error("Error adding sign-up: ", e);
@@ -274,26 +322,35 @@
             try {
                 if (!db || !auth || !auth.currentUser) return;
                 const docRef = doc(db, `artifacts/${appId}/public/data/${runType}/${docId}`);
-                const data = { [staffId]: FieldValue.delete() };
-                await updateDoc(docRef, data);
+                await updateDoc(docRef, {
+                    [staffId]: FieldValue.delete()
+                });
             } catch (e) {
                 console.error("Error removing sign-up: ", e);
             }
         }
 
         // Event listeners for auth buttons
-        document.getElementById('signInBtn').addEventListener('click', () => {
+        document.getElementById('signInGoogleBtn').addEventListener('click', () => {
             const provider = new GoogleAuthProvider();
             signInWithPopup(auth, provider)
                 .then((result) => {
                     // Signed in successfully
-                    const credential = GoogleAuthProvider.credentialFromResult(result);
-                    const token = credential.accessToken;
-                    const user = result.user;
                 }).catch((error) => {
-                    const errorCode = error.code;
                     const errorMessage = error.message;
                     console.error("Google Sign-in Error:", errorMessage);
+                    document.getElementById('error-message').textContent = errorMessage;
+                    document.getElementById('error-message').classList.remove('hidden');
+                });
+        });
+
+        document.getElementById('signInAnonymousBtn').addEventListener('click', () => {
+            signInAnonymously(auth)
+                .then(() => {
+                    // Signed in anonymously
+                }).catch((error) => {
+                    const errorMessage = error.message;
+                    console.error("Anonymous Sign-in Error:", errorMessage);
                     document.getElementById('error-message').textContent = errorMessage;
                     document.getElementById('error-message').classList.remove('hidden');
                 });
