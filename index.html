@@ -122,15 +122,15 @@
         let db, auth;
         let userId;
 
-        // Your web app's Firebase configuration - HARDCODE IT HERE AS A FALLBACK
+        // For Firebase JS SDK v7.20.0 and later, measurementId is optional
         const YOUR_FIREBASE_CONFIG = {
-            apiKey: "AIzaSyChx1hUc5JhsNSvFCJqCFo4pAeUAbJC-O0", // Your actual API Key
+            apiKey: "AIzaSyChx1hUc5JhsNSvFCJqCFo4pAeUAbJC-O0",
             authDomain: "staff-route-sign-up.firebaseapp.com",
             projectId: "staff-route-sign-up",
-            storageBucket: "staff-route-sign-up.appspot.com", // Corrected storageBucket
+            storageBucket: "staff-route-sign-up.firebasestorage.app",
             messagingSenderId: "583733533491",
             appId: "1:583733533491:web:0419cc007b0c7a262abc46",
-            measurementId: "G-MD7GNJ10GB" // If you have Google Analytics configured
+            measurementId: "G-MD7GNJ10GB"
         };
 
         // Use provided config if available (e.g., from a codelab), otherwise use your hard-coded one
