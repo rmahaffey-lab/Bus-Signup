@@ -118,19 +118,28 @@
         import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-analytics.js";
         import { getAuth, signInWithRedirect, GoogleAuthProvider, signOut, onAuthStateChanged, signInWithCustomToken, signInAnonymously, getRedirectResult } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, onSnapshot, collection, setDoc, updateDoc, FieldValue } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-        import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-storage.js";
 
         let db, auth;
         let userId;
 
-        // Firebase configuration from environment variables or a fallback
-        let firebaseConfig = null;
-        if (typeof __firebase_config !== 'undefined' && __firebase_config) {
-            firebaseConfig = JSON.parse(__firebase_config);
-        }
+        // Your web app's Firebase configuration - HARDCODE IT HERE AS A FALLBACK
+        const YOUR_FIREBASE_CONFIG = {
+            apiKey: "AIzaSyChx1hUc5JhsNSvFCJqCFo4pAeUAbJC-O0", // Your actual API Key
+            authDomain: "staff-route-sign-up.firebaseapp.com",
+            projectId: "staff-route-sign-up",
+            storageBucket: "staff-route-sign-up.appspot.com", // Corrected storageBucket
+            messagingSenderId: "583733533491",
+            appId: "1:583733533491:web:0419cc007b0c7a262abc46",
+            measurementId: "G-MD7GNJ10GB" // If you have Google Analytics configured
+        };
 
-        // Move these variables to a global scope so they are accessible by all functions
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        // Use provided config if available (e.g., from a codelab), otherwise use your hard-coded one
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : YOUR_FIREBASE_CONFIG;
+
+        // Ensure appId also falls back to your project ID
+        const appId = typeof __app_id !== 'undefined' ? __app_id : YOUR_FIREBASE_CONFIG.projectId; // Or 'staff-route-sign-up' if you prefer
+
+        // Ensure initialAuthToken is null if not provided
         const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
 
         // Bus stops
