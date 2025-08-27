@@ -147,41 +147,38 @@
         // Initialize Firebase and Authentication
         async function initializeFirebase() {
             try {
+                // Check if Firebase config is available before initializing
+                if (!firebaseConfig) {
+                    throw new Error("Firebase configuration not found. Please ensure the app is configured correctly.");
+                }
+
                 const app = initializeApp(firebaseConfig);
                 const analytics = getAnalytics(app);
                 db = getFirestore(app);
                 auth = getAuth(app);
 
-                // This is the key change: handle the redirect result first.
-                // The browser will be redirected back here after Google sign-in.
                 const redirectResult = await getRedirectResult(auth);
                 if (redirectResult && redirectResult.user) {
                     console.log("Signed in with redirect:", redirectResult.user);
                 } else if (initialAuthToken) {
-                    // Fallback to custom token if no redirect result
                     await signInWithCustomToken(auth, initialAuthToken);
                 }
 
-                // Listen for any auth state changes to update the UI
                 onAuthStateChanged(auth, async (user) => {
                     document.getElementById('loading').classList.add('hidden');
                     document.getElementById('main-content').classList.remove('hidden');
 
                     if (user) {
-                        // User is signed in.
                         userId = user.uid;
-                        // Display user info
                         const name = user.displayName || 'Anonymous User';
                         document.getElementById('user-info').textContent = `Signed in as ${name} (ID: ${userId})`;
 
                         document.getElementById('auth-ui').classList.add('hidden');
                         document.getElementById('app-ui').classList.remove('hidden');
                         
-                        // Listen for real-time updates from the database
                         await setupRealtimeListener();
 
                     } else {
-                        // User is signed out.
                         document.getElementById('auth-ui').classList.remove('hidden');
                         document.getElementById('app-ui').classList.add('hidden');
                     }
