@@ -90,8 +90,8 @@
     <!-- Firebase SDKs -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, onSnapshot, collection, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged, signInWithCustomToken, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, onSnapshot, collection, setDoc, FieldValue } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // Firebase configuration (replace with your own)
         const YOUR_FIREBASE_CONFIG = {
@@ -103,7 +103,7 @@
             appId: "1:583733533491:web:0419cc007b0c7a262abc46",
             measurementId: "G-MD7GNJ10GB"
         };
-        
+
         // Use provided config if available, otherwise use the hard-coded one
         const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : YOUR_FIREBASE_CONFIG;
         const appId = typeof __app_id !== 'undefined' ? __app_id : YOUR_FIREBASE_CONFIG.projectId;
@@ -135,8 +135,11 @@
                 db = getFirestore(app);
                 auth = getAuth(app);
 
+                // Sign in with the custom token provided by the Canvas environment, or anonymously otherwise.
                 if (initialAuthToken) {
                     await signInWithCustomToken(auth, initialAuthToken);
+                } else {
+                    await signInAnonymously(auth);
                 }
                 
                 onAuthStateChanged(auth, async (user) => {
@@ -160,7 +163,7 @@
 
             } catch (error) {
                 console.error("Error initializing Firebase:", error);
-                document.getElementById('error-message').textContent = "Error initializing app. Please check your Firebase configuration.";
+                document.getElementById('error-message').textContent = "Error initializing app: " + error.message;
                 document.getElementById('error-message').classList.remove('hidden');
             }
         }
@@ -265,7 +268,7 @@
             try {
                 if (!db || !auth || !auth.currentUser) return;
                 const docRef = doc(db, `artifacts/${appId}/public/data/${runType}/${docId}`);
-                const data = { [staffId]: null }; // Use null to remove the field
+                const data = { [staffId]: FieldValue.delete() };
                 await setDoc(docRef, data, { merge: true });
             } catch (e) {
                 console.error("Error removing sign-up: ", e);
