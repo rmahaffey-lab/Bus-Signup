@@ -69,6 +69,10 @@
                         <h1 class="text-2xl font-bold text-gray-800">Staff Bus Sign-Up</h1>
                         <p id="user-info" class="text-sm text-gray-500 mt-1"></p>
                     </div>
+                    <div class="flex items-center gap-2 mt-4 sm:mt-0">
+                        <label for="date-input" class="text-gray-600 text-sm font-semibold">Date:</label>
+                        <input type="date" id="date-input" class="p-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    </div>
                     <button id="signOutBtn" class="mt-4 sm:mt-0 bg-gray-200 text-gray-700 font-semibold py-2 px-4 rounded-md hover:bg-gray-300 transition duration-300">
                         Sign Out
                     </button>
@@ -121,6 +125,8 @@
 
         let db, auth;
         let userId;
+        let currentDate;
+        let unsubscribeListeners = [];
 
         // For Firebase JS SDK v7.20.0 and later, measurementId is optional
         const YOUR_FIREBASE_CONFIG = {
@@ -155,6 +161,15 @@
             'ABC RFTA'
         ];
 
+        // Function to get today's date in YYYY-MM-DD format
+        const getTodayDateString = () => {
+            const today = new Date();
+            const year = today.getFullYear();
+            const month = (today.getMonth() + 1).toString().padStart(2, '0');
+            const day = today.getDate().toString().padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        };
+
         // Function to sanitize text to be used as a document ID
         const sanitizeForId = (text) => text.toLowerCase().replace(/[^a-z0-9]/g, '');
 
@@ -177,6 +192,16 @@
                 } else if (initialAuthToken) {
                     await signInWithCustomToken(auth, initialAuthToken);
                 }
+
+                // Set up the date input and listener
+                const dateInput = document.getElementById('date-input');
+                currentDate = getTodayDateString();
+                dateInput.value = currentDate;
+                dateInput.addEventListener('change', (e) => {
+                    currentDate = e.target.value;
+                    unsubscribeAllListeners();
+                    setupRealtimeListener();
+                });
 
                 onAuthStateChanged(auth, async (user) => {
                     document.getElementById('loading').classList.add('hidden');
@@ -207,6 +232,12 @@
             }
         }
 
+        // Unsubscribe all active listeners
+        function unsubscribeAllListeners() {
+            unsubscribeListeners.forEach(unsubscribe => unsubscribe());
+            unsubscribeListeners = [];
+        }
+
         // Setup real-time listeners for bus sign-ups
         async function setupRealtimeListener() {
             if (!db || !auth || !auth.currentUser) {
@@ -216,27 +247,29 @@
 
             const staffId = auth.currentUser.uid;
             
-            // Reference to the public sign-up data collection
-            const morningRunRef = collection(db, `artifacts/${appId}/public/data/morning_run`);
-            const afternoonRunRef = collection(db, `artifacts/${appId}/public/data/afternoon_run`);
+            // Reference to the public sign-up data collections for the selected date
+            const morningRunRef = collection(db, `artifacts/${appId}/public/data/morning_run/${currentDate}/signups`);
+            const afternoonRunRef = collection(db, `artifacts/${appId}/public/data/afternoon_run/${currentDate}/signups`);
             
             // Listener for morning run
-            onSnapshot(morningRunRef, (snapshot) => {
+            const unsubscribeMorning = onSnapshot(morningRunRef, (snapshot) => {
                 const morningRuns = {};
                 snapshot.forEach(doc => {
                     morningRuns[doc.id] = doc.data();
                 });
                 renderBusStops('morning-run', morningRuns, staffId, 'morning_run');
             });
-            
+            unsubscribeListeners.push(unsubscribeMorning);
+
             // Listener for afternoon run
-            onSnapshot(afternoonRunRef, (snapshot) => {
+            const unsubscribeAfternoon = onSnapshot(afternoonRunRef, (snapshot) => {
                 const afternoonRuns = {};
                 snapshot.forEach(doc => {
                     afternoonRuns[doc.id] = doc.data();
                 });
                 renderBusStops('afternoon-run', afternoonRuns, staffId, 'afternoon_run');
             });
+            unsubscribeListeners.push(unsubscribeAfternoon);
         }
 
         // Render bus stops and sign-up buttons
@@ -325,8 +358,8 @@
         // Function to add a sign-up
         async function addSignUp(runType, docId, staffId, staffName) {
             try {
-                if (!db || !auth || !auth.currentUser) return;
-                const docRef = doc(db, `artifacts/${appId}/public/data/${runType}/${docId}`);
+                if (!db || !auth || !auth.currentUser || !currentDate) return;
+                const docRef = doc(db, `artifacts/${appId}/public/data/${runType}/${currentDate}/signups/${docId}`);
                 const data = { [staffId]: { uid: staffId, name: staffName, email: auth.currentUser.email || 'anonymous' } };
                 await setDoc(docRef, data, { merge: true });
             } catch (e) {
@@ -337,8 +370,8 @@
         // Function to remove a sign-up
         async function removeSignUp(runType, docId, staffId) {
             try {
-                if (!db || !auth || !auth.currentUser) return;
-                const docRef = doc(db, `artifacts/${appId}/public/data/${runType}/${docId}`);
+                if (!db || !auth || !auth.currentUser || !currentDate) return;
+                const docRef = doc(db, `artifacts/${appId}/public/data/${runType}/${currentDate}/signups/${docId}`);
                 await updateDoc(docRef, {
                     [staffId]: FieldValue.delete()
                 });
