@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Staff Bus Sign-Up</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script type="module">
+        // Import Firebase modules for authentication and Firestore.
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Global variables for Firebase configuration provided by the Canvas environment.
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+
+        let db = null;
+        let auth = null;
+
+        // Number of seats available on the bus.
+        const SEAT_CAPACITY = 14;
+
+        // The required email domain for sign-in.
+        const REQUIRED_EMAIL_DOMAIN = '@aspenk12.net';
+
+        // List of available bus stops.
+        const BUS_STOPS = [
+            'Hwy 133 park and ride',
+            'Catherine Store RFTA',
+            'El Jebel RFTA',
+            'Willits RFTA',
+            'Basalt RFTA',
+            'Old Snowmass RFTA',
+            'Aspen Village RFTA',
+            'Intercept Lot (Brush Creek Park N\' Ride)',
+            'ABC RFTA'
+        ];
+
+        // State object to hold all application data.
+        const state = {
+            loading: true,
+            dates: [],
+            signupData: {},
+            user: null,
+            isAuthenticated: false,
+            showModal: false,
+            modalMessage: '',
+            modalType: 'info' // Can be 'info' or 'error'
+        };
+
+        /**
+         * Renders the modal with a given message and type.
+         * @param {string} message - The message to display.
+         * @param {string} type - The type of modal ('info' or 'error').
+         */
+        function renderModal(message, type) {
+            state.showModal = true;
+            state.modalMessage = message;
+            state.modalType = type;
+            document.getElementById('modal-message').textContent = message;
+            document.getElementById('modal-close-button').textContent = 'Close';
+            document.getElementById('modal-container').classList.remove('hidden');
+            document.getElementById('modal-overlay').classList.remove('hidden');
+            if (type === 'error') {
+                 document.getElementById('modal-title').textContent = 'Error';
+            } else {
+                 document.getElementById('modal-title').textContent = 'Success';
+            }
+        }
+
+        /**
+         * Hides the modal.
+         */
+        function hideModal() {
+            state.showModal = false;
+            document.getElementById('modal-container').classList.add('hidden');
+            document.getElementById('modal-overlay').classList.add('hidden');
+        }
+
+        /**
+         * Initializes Firebase and Firestore, and sets up authentication.
+         */
+        async function initFirebase() {
+            try {
+                const app = initializeApp(firebaseConfig);
+                auth = getAuth(app);
+                db = getFirestore(app);
+
+                // Listen for real-time authentication state changes.
+                onAuthStateChanged(auth, async (user) => {
+                    if (user) {
+                        // A user is signed in, now check their email domain.
+                        if (user.email && user.email.endsWith(REQUIRED_EMAIL_DOMAIN)) {
+                            state.user = {
+                                uid: user.uid,
+                                name: user.displayName || user.email,
+                                email: user.email
+                            };
+                            state.isAuthenticated = true;
+                            // Once authenticated, fetch data from Firestore.
+                            setupFirestoreListener();
+                        } else {
+                            // Invalid email domain, sign the user out and show an error.
+                            await signOut(auth);
+                            state.user = null;
+                            state.isAuthenticated = false;
+                            renderModal(`Access Denied. You must sign in with a school district email ending in ${REQUIRED_EMAIL_DOMAIN}.`, 'error');
+                            state.loading = false;
+                            renderApp();
+                        }
+                    } else {
+                        // User is signed out.
+                        state.user = null;
+                        state.isAuthenticated = false;
+                        state.loading = false;
+                        renderApp();
+                    }
+                });
+
+            } catch (error) {
+                console.error("Error initializing Firebase or signing in:", error);
+                renderModal('Failed to initialize the application. Please try again later.', 'error');
+            }
+        }
+
+        /**
+         * Sets up a real-time listener for the bus sign-up data from Firestore.
+         */
+        function setupFirestoreListener() {
+            if (!db) {
+                console.error("Firestore is not initialized.");
+                return;
+            }
+
+            const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'bus_signups', 'main_sheet');
+
+            // Listen for real-time updates to the document.
+            onSnapshot(docRef, (docSnap) => {
+                if (docSnap.exists()) {
+                    // If the document exists, update the state with the latest data.
+                    state.signupData = docSnap.data().data;
+                } else {
+                    // If the document doesn't exist, create it with initial data.
+                    state.signupData = {};
+                    initializeFirestoreData();
+                }
+                state.loading = false;
+                renderApp();
+            }, (error) => {
+                console.error("Error getting real-time data from Firestore:", error);
+                renderModal("Failed to load sign-up data. Please check your connection.", 'error');
+            });
+        }
+
+        /**
+         * Initializes the Firestore document with a blank sign-up sheet.
+         */
+        async function initializeFirestoreData() {
+            const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'bus_signups', 'main_sheet');
+            const initialData = {};
+            state.dates.forEach(date => {
+                initialData[date] = {
+                    morning: Array(SEAT_CAPACITY).fill(null),
+                    afternoon: Array(SEAT_CAPACITY).fill(null)
+                };
+            });
+            try {
+                await setDoc(docRef, { data: initialData });
+                console.log("Firestore document initialized.");
+            } catch (e) {
+                console.error("Error initializing document: ", e);
+                renderModal("Failed to initialize the sign-up sheet. Please try again.", 'error');
+            }
+        }
+
+        /**
+         * Handles the Google Sign-in flow.
+         */
+        async function handleGoogleSignIn() {
+            const provider = new GoogleAuthProvider();
+            try {
+                // Sign in with Google Pop-up.
+                await signInWithPopup(auth, provider);
+            } catch (error) {
+                console.error("Google sign-in error:", error);
+                renderModal('Failed to sign in. Please try again.', 'error');
+            }
+        }
+
+        /**
+         * Handles the Sign-out process.
+         */
+        async function handleSignOut() {
+            try {
+                await signOut(auth);
+            } catch (error) {
+                console.error("Sign-out error:", error);
+                renderModal('Failed to sign out. Please try again.', 'error');
+            }
+        }
+
+        /**
+         * Adds a given number of days to a date.
+         * @param {Date} date - The starting date object.
+         * @param {number} days - The number of days to add.
+         * @returns {Date} The new date object.
+         */
+        function addDays(date, days) {
+            const result = new Date(date);
+            result.setDate(result.getDate() + days);
+            return result;
+        }
+
+        /**
+         * Formats a Date object into a YYYY-MM-DD string.
+         * @param {Date} date - The date to format.
+         * @returns {string} The formatted date string.
+         */
+        function formatDate(date) {
+            return date.toISOString().slice(0, 10);
+        }
+
+        /**
+         * Determines if a given date is a workday based on the calendar and holidays.
+         * @param {Date} date - The date to check.
+         * @returns {boolean} True if the date is a workday, false otherwise.
+         */
+        function isWorkday(date) {
+            const dayOfWeek = date.getDay();
+            const dateStr = formatDate(date);
+
+            // Weekends are not workdays.
+            if (dayOfWeek === 0 || dayOfWeek === 6) {
+                return false;
+            }
+
+            // List of holidays from the calendar.
+            const holidays = [
+                '2025-09-01', // Labor Day
+                '2025-11-24', '2025-11-25', '2025-11-26', '2025-11-27', '2025-11-28', // Thanksgiving Break
+                '2025-12-22', '2025-12-23', '2025-12-24', '2025-12-25', '2025-12-26', '2025-12-27', '2025-12-28', '2025-12-29', '2025-12-30', '2025-12-31',
+                '2026-01-01', '2026-01-02', // Winter Break
+                '2026-01-19', // Martin Luther King Day
+                '2026-02-16', // President's Day
+                '2026-03-31', '2026-04-01', '2026-04-02', '2026-04-03', // Spring Break
+                '2026-05-25' // Memorial Day
+            ];
+
+            return !holidays.includes(dateStr);
+        }
+
+        /**
+         * Generates a list of all workdays for the school year.
+         */
+        function generateWorkdays() {
+            const startDate = new Date('2025-08-07');
+            const endDate = new Date('2026-05-26');
+            const dates = [];
+            let currentDate = startDate;
+
+            while (currentDate <= endDate) {
+                if (isWorkday(currentDate)) {
+                    dates.push(formatDate(currentDate));
+                }
+                currentDate = addDays(currentDate, 1);
+            }
+            state.dates = dates;
+        }
+
+        /**
+         * Handles the sign-up process when a user clicks a seat.
+         * @param {string} date - The date of the run.
+         * @param {string} run - The time of the run ('morning' or 'afternoon').
+         * @param {number} seatIndex - The index of the seat (0-13).
+         */
+        async function handleSignUp(date, run, seatIndex) {
+            const userName = state.user?.name;
+            const busStop = document.getElementById('bus-stop').value;
+
+            if (!userName) {
+                renderModal('You must be signed in to a valid account to sign up.', 'error');
+                return;
+            }
+
+            if (!busStop) {
+                renderModal('Please select a bus stop.', 'error');
+                return;
+            }
+
+            // Check if the seat is already taken.
+            const currentSignups = state.signupData[date]?.[run] || Array(SEAT_CAPACITY).fill(null);
+            if (currentSignups[seatIndex] !== null) {
+                renderModal('This seat is already taken. Please select an empty seat.', 'error');
+                return;
+            }
+
+            // Create the new signup object.
+            const newSignup = { name: userName, stop: busStop, uid: state.user.uid };
+
+            // Optimistic UI update.
+            const newSignups = [...currentSignups];
+            newSignups[seatIndex] = newSignup;
+            const newState = { ...state.signupData };
+            if (!newState[date]) {
+                newState[date] = { morning: Array(SEAT_CAPACITY).fill(null), afternoon: Array(SEAT_CAPACITY).fill(null) };
+            }
+            newState[date][run] = newSignups;
+            state.signupData = newState;
+            renderApp();
+
+            try {
+                const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'bus_signups', 'main_sheet');
+                // Use a transaction to ensure atomic updates for real-time collaboration.
+                await setDoc(docRef, { data: newState });
+                renderModal(`Successfully signed up for the ${run} bus on ${date} at ${busStop}!`, 'info');
+            } catch (error) {
+                console.error("Error signing up:", error);
+                renderModal('An error occurred. Please try again.', 'error');
+                // Revert optimistic UI update on error.
+                state.signupData = state.signupData;
+                renderApp();
+            }
+        }
+
+        /**
+         * Deletes a user's sign-up from a specific seat.
+         * @param {string} date - The date of the run.
+         * @param {string} run - The time of the run ('morning' or 'afternoon').
+         * @param {number} seatIndex - The index of the seat.
+         */
+        async function handleCancel(date, run, seatIndex) {
+            const currentSignups = state.signupData[date]?.[run];
+            if (!currentSignups || currentSignups[seatIndex] === null) {
+                renderModal('This seat is not occupied.', 'error');
+                return;
+            }
+            
+            // Check if the user is the one who made the sign-up.
+            if (currentSignups[seatIndex].uid !== state.user?.uid) {
+                 renderModal('You can only cancel your own sign-ups.', 'error');
+                 return;
+            }
+
+            const newSignups = [...currentSignups];
+            newSignups[seatIndex] = null;
+            const newState = { ...state.signupData };
+            newState[date][run] = newSignups;
+            state.signupData = newState;
+            renderApp();
+
+            try {
+                const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'bus_signups', 'main_sheet');
+                await setDoc(docRef, { data: newState });
+                renderModal(`Successfully cancelled your sign-up for the ${run} bus on ${date}.`, 'info');
+            } catch (error) {
+                console.error("Error cancelling sign-up:", error);
+                renderModal('An error occurred during cancellation. Please try again.', 'error');
+                state.signupData = state.signupData;
+                renderApp();
+            }
+        }
+
+        /**
+         * Renders the entire application based on the current state.
+         */
+        function renderApp() {
+            const app = document.getElementById('app');
+            const filterName = document.getElementById('filter-name').value.toLowerCase().trim();
+            const filterStop = document.getElementById('filter-stop').value.toLowerCase().trim();
+
+            if (state.loading) {
+                app.innerHTML = '<div class="flex justify-center items-center h-full"><div class="text-xl font-semibold text-gray-700">Loading sign-up sheet...</div></div>';
+                return;
+            }
+
+            // If not authenticated, show the sign-in screen.
+            if (!state.isAuthenticated) {
+                app.innerHTML = `
+                    <div class="w-full max-w-md mx-auto p-8 bg-white rounded-2xl shadow-xl text-center">
+                        <h2 class="text-3xl font-bold mb-4">Staff Bus Sign-Up</h2>
+                        <p class="text-gray-600 mb-6">You must sign in with your school district email to access the sign-up sheet.</p>
+                        <button onclick="handleGoogleSignIn()" class="w-full px-4 py-3 bg-indigo-600 text-white font-medium rounded-lg shadow-sm hover:bg-indigo-700 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                            <div class="flex items-center justify-center space-x-2">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-google"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 10 10"/><path d="M12 2a10 10 0 0 0-10 10"/><path d="M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0z"/></svg>
+                                <span>Sign in with Google</span>
+                            </div>
+                        </button>
+                    </div>
+                `;
+                return;
+            }
+
+            // Filter dates based on staff name or bus stop.
+            const filteredDates = state.dates.filter(dateStr => {
+                const signups = state.signupData[dateStr];
+                if (!signups) return false;
+
+                const allSignupsForDay = [...signups.morning, ...signups.afternoon].filter(s => s !== null);
+
+                // If no filters are applied, show all dates.
+                if (!filterName && !filterStop) {
+                    return true;
+                }
+
+                // Check for matches based on filter criteria.
+                const nameMatch = allSignupsForDay.some(s => s.name.toLowerCase().includes(filterName));
+                const stopMatch = allSignupsForDay.some(s => s.stop.toLowerCase().includes(filterStop));
+
+                if (filterName && filterStop) {
+                    return nameMatch && stopMatch;
+                } else if (filterName) {
+                    return nameMatch;
+                } else if (filterStop) {
+                    return stopMatch;
+                }
+
+                return false;
+            });
+
+            // Generate HTML for the table rows.
+            const tableRows = filteredDates.map(dateStr => {
+                const date = new Date(dateStr + 'T12:00:00Z'); // Use Z to avoid timezone issues
+                const dayOfWeek = date.toLocaleDateString('en-US', { weekday: 'short' });
+                const monthDay = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
+                const morningSignups = state.signupData[dateStr]?.morning || Array(SEAT_CAPACITY).fill(null);
+                const afternoonSignups = state.signupData[dateStr]?.afternoon || Array(SEAT_CAPACITY).fill(null);
+
+                const morningSeatsAvailable = morningSignups.filter(s => s === null).length;
+                const afternoonSeatsAvailable = afternoonSignups.filter(s => s === null).length;
+
+                // Create HTML for each seat in the morning run.
+                const morningSeatsHtml = morningSignups.map((passenger, index) => {
+                    if (passenger) {
+                        const isUser = passenger.uid === state.user.uid;
+                        return `
+                            <div class="p-2 border border-gray-300 rounded-lg text-xs font-medium text-white flex justify-between items-center transition-transform hover:scale-105 duration-200 ease-in-out ${isUser ? 'bg-indigo-500' : 'bg-red-500'}">
+                                <div class="flex flex-col">
+                                    <span>${passenger.name}</span>
+                                    <span class="text-[10px] opacity-80">${passenger.stop}</span>
+                                </div>
+                                <button class="text-xs text-white" onclick="handleCancel('${dateStr}', 'morning', ${index})">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                                        <path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd" />
+                                    </svg>
+                                </button>
+                            </div>
+                        `;
+                    } else {
+                        return `<button onclick="handleSignUp('${dateStr}', 'morning', ${index})" class="p-2 border border-green-300 bg-green-100 rounded-lg text-xs text-green-700 transition-transform hover:scale-105 duration-200 ease-in-out">Seat ${index + 1}</button>`;
+                    }
+                }).join('');
+
+                // Create HTML for each seat in the afternoon run.
+                const afternoonSeatsHtml = afternoonSignups.map((passenger, index) => {
+                    if (passenger) {
+                        const isUser = passenger.uid === state.user.uid;
+                        return `
+                            <div class="p-2 border border-gray-300 rounded-lg text-xs font-medium text-white flex justify-between items-center transition-transform hover:scale-105 duration-200 ease-in-out ${isUser ? 'bg-indigo-500' : 'bg-red-500'}">
+                                <div class="flex flex-col">
+                                    <span>${passenger.name}</span>
+                                    <span class="text-[10px] opacity-80">${passenger.stop}</span>
+                                </div>
+                                <button class="text-xs text-white" onclick="handleCancel('${dateStr}', 'afternoon', ${index})">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                                        <path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd" />
+                                    </svg>
+                                </button>
+                            </div>
+                        `;
+                    } else {
+                        return `<button onclick="handleSignUp('${dateStr}', 'afternoon', ${index})" class="p-2 border border-green-300 bg-green-100 rounded-lg text-xs text-green-700 transition-transform hover:scale-105 duration-200 ease-in-out">Seat ${index + 1}</button>`;
+                    }
+                }).join('');
+
+
+                return `
+                    <tr class="hover:bg-gray-50 transition-colors">
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${monthDay} (${dayOfWeek})</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center">
+                            <span class="font-bold ${morningSeatsAvailable > 0 ? 'text-green-600' : 'text-red-600'}">${morningSeatsAvailable}</span>/${SEAT_CAPACITY}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center">
+                            <span class="font-bold ${afternoonSeatsAvailable > 0 ? 'text-green-600' : 'text-red-600'}">${afternoonSeatsAvailable}</span>/${SEAT_CAPACITY}
+                        </td>
+                        <td class="px-6 py-4">
+                            <div class="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                                ${morningSeatsHtml}
+                            </div>
+                        </td>
+                        <td class="px-6 py-4">
+                            <div class="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                                ${afternoonSeatsHtml}
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+
+            // Generate HTML for bus stop options.
+            const busStopOptions = BUS_STOPS.map(stop => `<option value="${stop}">${stop}</option>`).join('');
+
+            app.innerHTML = `
+                <div class="w-full">
+                    <div class="bg-white rounded-2xl shadow-xl overflow-hidden md:w-full md:max-w-7xl mx-auto">
+                        <div class="px-4 py-5 sm:p-6">
+                            <div class="flex flex-col sm:flex-row justify-between items-center mb-4">
+                                <div class="flex items-center space-x-2">
+                                    <h2 class="text-2xl sm:text-3xl font-bold leading-tight text-gray-900 font-inter">Staff Bus Sign-Up</h2>
+                                    <button onclick="handleSignOut()" class="px-2 py-1 bg-red-500 text-white text-xs font-medium rounded-md hover:bg-red-600 transition-colors duration-200 focus:outline-none">Sign Out</button>
+                                </div>
+                                <div class="mt-2 sm:mt-0 text-sm font-medium text-gray-700">
+                                    Signed in as: <span class="font-semibold">${state.user.name}</span>
+                                </div>
+                            </div>
+                            <p class="mt-2 text-center text-gray-600">Morning and afternoon runs available. There are 14 seats on each bus. Sign up for a seat below!</p>
+                            <div class="mt-6 flex flex-col sm:flex-row gap-4">
+                                <div class="flex-1">
+                                    <label for="bus-stop" class="block text-sm font-medium text-gray-700">Your Bus Stop</label>
+                                    <select id="bus-stop" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2">
+                                        <option value="">Select a stop</option>
+                                        ${busStopOptions}
+                                    </select>
+                                </div>
+                            </div>
+                            <!-- New filter inputs -->
+                            <div class="mt-6 flex flex-col sm:flex-row gap-4">
+                                <div class="flex-1">
+                                    <label for="filter-name" class="block text-sm font-medium text-gray-700">Filter by Name</label>
+                                    <input type="text" id="filter-name" placeholder="Filter by staff name" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2" oninput="renderApp()">
+                                </div>
+                                <div class="flex-1">
+                                    <label for="filter-stop" class="block text-sm font-medium text-gray-700">Filter by Bus Stop</label>
+                                    <input type="text" id="filter-stop" placeholder="Filter by bus stop" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2" oninput="renderApp()">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="min-w-full divide-y divide-gray-200">
+                                <thead class="bg-gray-50">
+                                    <tr>
+                                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                                        <th scope="col" class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Morning (Available)</th>
+                                        <th scope="col" class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Afternoon (Available)</th>
+                                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Morning Sign-ups</th>
+                                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Afternoon Sign-ups</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="bg-white divide-y divide-gray-200">
+                                    ${tableRows}
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="p-6 text-sm text-gray-500 text-center">
+                            <p id="user-info" class="mt-2 text-sm font-medium text-gray-700"></p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Modal for confirmation/errors -->
+                <div id="modal-overlay" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden z-40"></div>
+                <div id="modal-container" class="fixed inset-0 flex items-center justify-center p-4 hidden z-50">
+                    <div class="bg-white rounded-xl shadow-xl p-6 w-full max-w-sm">
+                        <h3 id="modal-title" class="text-lg font-bold text-gray-900 mb-2"></h3>
+                        <p id="modal-message" class="text-sm text-gray-600 mb-4"></p>
+                        <div class="flex justify-end">
+                            <button id="modal-close-button" class="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-md shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">Close</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            // Attach event listener to the modal close button.
+            document.getElementById('modal-close-button').addEventListener('click', hideModal);
+        }
+
+        // Expose functions to the global scope so they can be called from the HTML.
+        window.handleGoogleSignIn = handleGoogleSignIn;
+        window.handleSignOut = handleSignOut;
+        window.handleSignUp = handleSignUp;
+        window.handleCancel = handleCancel;
+        window.renderApp = renderApp; // Expose renderApp to be used by the filter inputs
+
+        // Start the application on window load.
+        window.onload = function() {
+            generateWorkdays();
+            initFirebase();
+            renderApp();
+        };
+
+    </script>
+</head>
+<body class="bg-gray-100 font-sans antialiased text-gray-900 p-4 min-h-screen flex items-center justify-center">
+    <div id="app" class="w-full">
+        <!-- Application content will be rendered here by JavaScript -->
+        <div class="flex justify-center items-center h-full"><div class="text-xl font-semibold text-gray-700">Loading sign-up sheet...</div></div>
+    </div>
+</body>
+</html>
