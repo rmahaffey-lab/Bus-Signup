@@ -116,7 +116,7 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-analytics.js";
-        import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged, signInWithCustomToken, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getAuth, signInWithRedirect, GoogleAuthProvider, signOut, onAuthStateChanged, signInWithCustomToken, signInAnonymously, getRedirectResult } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, onSnapshot, collection, setDoc, updateDoc, FieldValue } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-storage.js";
 
@@ -155,6 +155,13 @@
                 // Check for initial custom token and sign in
                 if (initialAuthToken) {
                     await signInWithCustomToken(auth, initialAuthToken);
+                } else {
+                    // Handle the redirect result if the user was just redirected back
+                    const result = await getRedirectResult(auth);
+                    if (result) {
+                        // User successfully signed in via redirect.
+                        console.log("Signed in with redirect.");
+                    }
                 }
                 
                 onAuthStateChanged(auth, async (user) => {
@@ -333,15 +340,7 @@
         // Event listeners for auth buttons
         document.getElementById('signInGoogleBtn').addEventListener('click', () => {
             const provider = new GoogleAuthProvider();
-            signInWithPopup(auth, provider)
-                .then((result) => {
-                    // Signed in successfully
-                }).catch((error) => {
-                    const errorMessage = error.message;
-                    console.error("Google Sign-in Error:", errorMessage);
-                    document.getElementById('error-message').textContent = errorMessage;
-                    document.getElementById('error-message').classList.remove('hidden');
-                });
+            signInWithRedirect(auth, provider);
         });
 
         document.getElementById('signInAnonymousBtn').addEventListener('click', () => {
