@@ -146,6 +146,9 @@
                 }
                 
                 onAuthStateChanged(auth, async (user) => {
+                    document.getElementById('loading').classList.add('hidden');
+                    document.getElementById('main-content').classList.remove('hidden');
+
                     if (user) {
                         // User is signed in.
                         userId = user.uid;
@@ -165,7 +168,6 @@
                         // User is signed out.
                         document.getElementById('auth-ui').classList.remove('hidden');
                         document.getElementById('app-ui').classList.add('hidden');
-                        document.getElementById('loading').classList.add('hidden');
                     }
                 });
 
@@ -173,6 +175,8 @@
                 console.error("Error initializing Firebase:", error);
                 document.getElementById('error-message').textContent = "Error initializing app: " + error.message;
                 document.getElementById('error-message').classList.remove('hidden');
+                document.getElementById('loading').classList.add('hidden');
+                document.getElementById('main-content').classList.remove('hidden');
             }
         }
 
@@ -206,8 +210,6 @@
                 });
                 renderBusStops('afternoon-run', afternoonRuns, staffId, 'afternoon_run');
             });
-
-            document.getElementById('loading').classList.add('hidden');
         }
 
         // Render bus stops and sign-up buttons
